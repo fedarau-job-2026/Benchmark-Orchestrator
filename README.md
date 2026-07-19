@@ -237,3 +237,14 @@ Swagger, system-under-test-first build order, evidence-sharpened AIMD, the ADR
 trail) was specified and reviewed by hand, and every component was validated against
 a live stack — real Ollama in Docker, including mid-run limit changes — during
 development.
+
+For full transparency the raw session transcripts are committed in
+[`chat-export/`](chat-export/):
+
+- [`builder.txt`](chat-export/builder.txt) — the build session: architecture
+  direction, implementation, and the ADR trail being written as decisions were made.
+- [`tests.txt`](chat-export/tests.txt) — a separate evaluation session run against
+  the finished project: static review plus a live experiment matrix (baseline
+  saturation at the theoretical ceiling, mid-run RPM halve/double under service
+  restarts with a control run, per-knob limit discovery, 429-politeness analysis,
+  and failure-path checks — service down, killed mid-run, Ctrl-C).
