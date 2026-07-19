@@ -1,0 +1,871 @@
+ ▐▛███▜▌   Claude Code v2.1.215
+▝▜█████▛▘  Fable 5 · Claude Max
+  ▘▘ ▝▝    ~/Downloads/Benchmark-Orchestrator
+
+ ⚠ Your login expires in 5 days · run /login to renew
+
+❯ ## What we're evaluating                                                      
+                                                                                
+  In rough order of weight:                                                     
+                                                                                
+  - **Concurrency & backoff.** Does your orchestrator saturate the endpoint     
+  without melting it? How does it react when we halve the RPM? When we double   
+  it?                                                                           
+  - **System design.** Is the queue abstraction sensible? Can a new job type be 
+  added without rewriting the world? Where are the boundaries between           
+  components?                                                                   
+  - **Observability.** Can we tell what the system is doing while it's running? 
+  Progress, ETA, live throughput, failures, surface whatever you'd want if a    
+  customer were watching over your shoulder.                                    
+  - **Product thinking.** Is the CLI pleasant? Are the defaults right? Would we 
+  actually use this tomorrow, or would we rewrite it?                           
+  - **Pragmatism.** Did you ship something that works end-to-end, or did you    
+  over-engineer one corner and leave the rest broken? Ten hours isn't a lot,    
+  we're looking for good judgment about where to spend them.                    
+                                                                                
+  Code quality matters, but we weigh "does this work well under load" above "is 
+  every function perfectly typed." create plan to evaluate this for current     
+  project                                                                       
+
+⏺ I'll first explore the project to understand what's built, then design an
+  evaluation plan against those five criteria.
+
+⏺ 2 background agents launched (↓ to manage)
+   ├ Explore orchestrator implementation
+   └ Explore inference service + docs
+
+⏺ Both exploration agents are running — one on the orchestrator internals, one
+  on the inference service, docs, and ADRs. I'll wait for their reports before
+  drafting the evaluation plan.
+
+✻ Sautéed for 21s
+
+⏺ Agent "Explore orchestrator implementation" finished · 1m 14s
+
+⏺ The orchestrator exploration is complete — it's a well-built AIMD controller
+  with a Rich TUI, job registry, and three test suites. Still waiting on the
+  second agent covering the inference service, docs, and ADRs before I draft the
+  evaluation plan.
+
+✻ Crunched for 3s
+
+⏺ Agent "Explore inference service + docs" finished · 1m 40s
+
+⏺ Both explorations are done and I have a full picture: the service's limits are
+  startup-only (env → restart), the orchestrator does genuine AIMD discovery,
+  and the README already documents a restart-based limit-change run. Now I'll
+  have a Plan agent design the evaluation protocol.
+
+⏺ Plan(Design evaluation protocol)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+⏺ The Plan agent is now designing the evaluation protocol — the experiment
+  matrix (baseline, mid-run RPM halve/double via service restart, per-knob
+  discovery runs, failure paths), the static review checklist, and a scoring
+  rubric. I'll assemble the final plan when it reports back.
+
+✻ Churned for 1m 14s
+
+⏺ Agent "Design evaluation protocol" finished · 3m 44s
+
+⏺ The evaluation protocol is designed. Writing the final plan file now.
+
+⏺ Updated plan
+  ⎿  /plan to preview
+  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────────────────────╮
+     │ Evaluation Plan: Benchmark-Orchestrator vs the Grading Criteria         │
+     │                                                                         │
+     │ Context                                                                 │
+     │                                                                         │
+     │ The repo is a finished FDE take-home (rate-limited inference service +  │
+     │ AIMD benchmark orchestrator). The task is to evaluate it against the    │
+     │ five weighted criteria from the brief — concurrency & backoff, system   │
+     │ design, observability, product thinking, pragmatism — and produce an    │
+     │ evidence-backed evaluation report. The repo stays read-only; all        │
+     │ artifacts (helper scripts, trimmed queues, logs, results, report) go to │
+     │ the session scratchpad ($SCRATCH).                                      │
+     │                                                                         │
+     │ Key constraint discovered in exploration: the service's                 │
+     │ RPM/MAX_CONCURRENCY are read from env once at startup — no admin        │
+     │ endpoint. The "halve/double RPM mid-run" scenarios must be done by      │
+     │ restarting the native service process with new env (the README's own    │
+     │ measured runs did exactly this). Restart kills in-flight requests, and  │
+     │ the orchestrator only gives transport errors a 3-retry                  │
+     │ exponential-backoff budget — so downtime must be measured, and a        │
+     │ control run (restart with unchanged RPM) separates restart transients   │
+     │ from adaptation quality.                                                │
+     │                                                                         │
+     │ Phase 0 — Pre-flight (~5 min)                                           │
+     │                                                                         │
+     │ - lsof -i :8080 (kill/abort on conflict). Never use system Python       │
+     │ (3.9); always uv run --project <dir> ....                               │
+     │ - Warm both venvs: uv run --project .../inference-service python        │
+     │ --version, same for orchestrator (fast restarts depend on warm venvs).  │
+     │ - Create in $SCRATCH:                                                   │
+     │   - queue_1.jsonl / queue_3.jsonl — 1 and 3 lines of                    │
+     │ {"benchmark_id":"run_00N","csv_path":"<ABSOLUTE path to                 │
+     │ data/benchmark.csv>"} (csv_path resolves relative to the queue file's   │
+     │ dir, so absolute paths are required).                                   │
+     │   - start_service.sh RPM CONC TAG — RPM=$1 MAX_CONCURRENCY=$2           │
+     │ BACKEND=mock nohup uv run --project .../inference-service               │
+     │ inference-service > $SCRATCH/svc_$3.log 2>&1 &; write PID to            │
+     │ $SCRATCH/svc.pid.                                                       │
+     │   - restart_service.sh RPM CONC TAG — kill PID, restart, poll curl -sf  │
+     │ localhost:8080/healthz every 0.2s; log epoch timestamps at kill and     │
+     │ first healthy → measured downtime.                                      │
+     │ - Standard run: uv run --project .../orchestrator orchestrator <queue>  │
+     │ --out $SCRATCH/results_<exp> --no-tui, piped through a per-line         │
+     │ epoch-timestamp prefix into $SCRATCH/orch_<exp>.log (the 5s log lines   │
+     │ are the reconvergence instrument).                                      │
+     │                                                                         │
+     │ Phase 1 — Static review (~45 min)                                       │
+     │                                                                         │
+     │ 1. Test suites: uv run --project ... pytest in both subprojects; record │
+     │ counts/runtimes. Note the FakeClock limiter tests, OpenAPI              │
+     │ contract-pin test (service), 12 AIMD unit tests + contract-fake         │
+     │ integration tests (orchestrator).                                       │
+     │ 2. README claim audit: run the documented native quick-start verbatim;  │
+     │ docker compose config to validate compose (don't require daemon); check │
+     │ documented defaults match config.py.                                    │
+     │ 3. Per-criterion reading (verify constants the experiments predict      │
+     │ against):                                                               │
+     │   - orchestrator/src/orchestrator/controller.py — window start 2, +1    │
+     │ per 5 clean-if-binding, slow-start ×2, creep ×1.15/2s, learn ×0.98,     │
+     │ MAX_RATE=100.                                                           │
+     │   - orchestrator/src/orchestrator/runner.py — exact transport-error     │
+     │ backoff schedule (predict whether restart downtime fits inside it       │
+     │ before running E2).                                                     │
+     │   - inference-service/src/inference_service/rate_limiter.py —           │
+     │ concurrency-before-RPM check; rejects don't consume window slots.       │
+     │   - orchestrator/src/orchestrator/jobs.py, cli.py, report.py, tui.py;   │
+     │ all 12 ADRs (grade whether code matches stated decisions). Check        │
+     │ whether 429-by-reason and learned rate are persisted in results JSON or │
+     │ TUI-only (feeds E5 and the observability verdict).                      │
+     │ 4. Extensibility desk probe (no code committed): sketch adding a        │
+     │ prompt_jsonl job type; enumerate files touched. Strong = new handler    │
+     │ class + one REGISTRY line; weak = benchmark_csv assumptions baked into  │
+     │ runner/report/CLI (trace for accuracy/grouping coupling).               │
+     │                                                                         │
+     │ Phase 2 — Experiment matrix (mock backend, ~55–70 min dynamic)          │
+     │                                                                         │
+     │ Theoretical throughput = min(RPM/60, CONC/0.4s) at mock latency         │
+     │ 400ms±200ms.                                                            │
+     │                                                                         │
+     │ Exp: E1 baseline                                                        │
+     │ Config: RPM=60 CONC=4                                                   │
+     │ Queue: full 1000-q                                                      │
+     │ Ceiling: 1.0 rps                                                        │
+     │ What's judged: Convergence + efficiency: wall ≤ ~1100s (≥0.90 of ideal  │
+     │ 1000s),                                                                 │
+     │ learned rate ≈ 57–60/min, 0 failures. Do not penalize discovered        │
+     │ concurrency                                                             │
+     │  staying ≈2: at 1.0 rps × 0.4s, in-flight ≈ 0.4 — the window is never   │
+     │ binding, so not climbing to 4 is correct.                               │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E7 observability + control restart                                 │
+     │ Config: RPM=60 CONC=4                                                   │
+     │ Queue: queue_1                                                          │
+     │ Ceiling: 1.0 rps                                                        │
+     │ What's judged: TUI run captured via script -q (non-interactive caveat)  │
+     │ +                                                                       │
+     │ --no-tui run; mid-run, can each mode answer: current throughput, ETA,   │
+     │ learned                                                                 │
+     │  limits, failure count, and why it's pausing? Fold in the control       │
+     │ restart                                                                 │
+     │ (restart with unchanged RPM=60) to measure restart-transient-only       │
+     │ failures —                                                              │
+     │ E2 is judged net of this.                                               │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E2 halve (headline)                                                │
+     │ Config: RPM=60→30 at t+150s                                             │
+     │ Queue: queue_3 (300 q)                                                  │
+     │ Ceiling: 1.0→0.5 rps                                                    │
+     │ What's judged: Reconvergence: first log where 30s-window rps ∈ [0.42,   │
+     │ 0.58] and                                                               │
+     │ holds. ≤120s strong / ≤240s adequate / oscillation-or-collapse weak.    │
+     │ Net                                                                     │
+     │ failures 0 strong / ≤4 (one in-flight cohort) adequate. Anticipate:     │
+     │ restarted                                                               │
+     │  service has an empty window → brief accept-burst then rpm-429s;        │
+     │ orchestrator's trailing-60s learn is polluted by pre-restart traffic    │
+     │ for up                                                                  │
+     │ to 60s, so first learned value may need a second 429 cycle.             │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E3 double                                                          │
+     │ Config: RPM=30→60 at t+150s                                             │
+     │ Queue: queue_3                                                          │
+     │ Ceiling: 0.5→1.0 rps                                                    │
+     │ What's judged: Upward rediscovery via ×1.15 creep only (no error        │
+     │ signal): ~6                                                             │
+     │ creep steps ≈ 12s pure; expect 1.0 rps within 30–90s (strong ≤90s,      │
+     │ adequate                                                                │
+     │ ≤240s, weak = stuck at stale cap — a real adaptivity bug if seen).      │
+     │ Final                                                                   │
+     │ discovered_limits should read ~60.                                      │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E4a tight-conc                                                     │
+     │ Config: RPM=600 CONC=2                                                  │
+     │ Queue: queue_3                                                          │
+     │ Ceiling: 5.0 rps                                                        │
+     │ What's judged: Concurrency-429s dominate, window → 2, throughput 4.5–5  │
+     │ rps.                                                                    │
+     │ Validates +1-only-if-binding and drop-to-observed-in-flight.            │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E4b tight-rpm                                                      │
+     │ Config: RPM=20 CONC=8                                                   │
+     │ Queue: queue_1                                                          │
+     │ Ceiling: 0.333 rps                                                      │
+     │ What's judged: Learned rate ≈ 19.6/min, zero concurrency-429s. E4a+E4b  │
+     │ together                                                                │
+     │ = each knob discovered from its own signal.                             │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E5 politeness                                                      │
+     │ Config: derived from E1–E4 logs                                         │
+     │ Queue: —                                                                │
+     │ Ceiling: —                                                              │
+     │ What's judged: 429/accepted ratio in steady state + worst 10s 429       │
+     │ burst. Strong                                                           │
+     │ < 5% and no burst > ~10/10s; weak = tight 429 loops. Credit the service │
+     │ too:                                                                    │
+     │ rejects don't consume window slots.                                     │
+     │ ────────────────────────────────────────                                │
+     │ Exp: E6 failure paths                                                   │
+     │ Config: —                                                               │
+     │ Queue: queue_1                                                          │
+     │ Ceiling: —                                                              │
+     │ What's judged: (a) service down at start → exit 2, clean message; (b)   │
+     │ kill                                                                    │
+     │ service at t+30s, never restart → run completes with failures recorded, │
+     │ no                                                                      │
+     │ hang/traceback (hang = major pragmatism deduction); (c) SIGINT → exit   │
+     │ 130 +                                                                   │
+     │ honest "partial results were not written"; file the no-resume gap.      │
+     │                                                                         │
+     │ Order: Phase 1 → E1 → E7(+control) → E2 → E3 → E4a → E4b → E6 → E5      │
+     │ analysis → report. Kill service ($SCRATCH/svc.pid) after every          │
+     │ experiment; final ps-verified cleanup sweep.                            │
+     │                                                                         │
+     │ Phase 3 — Scoring rubric (weights from the brief's order)               │
+     │                                                                         │
+     │ - Concurrency & backoff (30%) — strong: E1 ≥0.90 efficiency + learned   │
+     │ rate within 5%; E2 net reconvergence ≤120s, ≤4 net failures; E3 ≤90s;   │
+     │ independent knobs in E4; E5 <5%. Weak: oscillation, stale-cap lock, 429 │
+     │ storms, efficiency <0.75.                                               │
+     │ - System design (25%) — strong: desk probe = jobs.py-only change;       │
+     │ controller ignorant of HTTP, runner ignorant of grading; ADRs match     │
+     │ code. Weak: ceremonial registry, god-object runner.                     │
+     │ - Observability (20%) — strong: both modes answer "what is it doing     │
+     │ right now" incl. pause reason; results JSON is a complete post-mortem   │
+     │ (429 breakdown + discovered limits persisted). Weak: stall cause opaque │
+     │ during E2 pause.                                                        │
+     │ - Product thinking (15%) — strong: README verbatim-works, sane          │
+     │ defaults/exit codes, honest gap docs. Weak: undocumented steps, hostile │
+     │ errors.                                                                 │
+     │ - Pragmatism (10%) — strong: end-to-end works both paths; budget        │
+     │ visibly spent on the hard part (controller + tests); gaps chosen and    │
+     │ documented. Weak: polish on corners while E1/E6 fail.                   │
+     │                                                                         │
+     │ Score strong=3/adequate=2/weak=1 weighted, but lead the report with a   │
+     │ narrative verdict.                                                      │
+     │                                                                         │
+     │ Phase 4 — Deliverable                                                   │
+     │                                                                         │
+     │ $SCRATCH/evaluation_report.md (scratchpad, not the repo — it's the      │
+     │ artifact under evaluation; can be relocated/published after user        │
+     │ review):                                                                │
+     │ 1. Executive summary + weighted score table.                            │
+     │ 2. Per-criterion verdict + evidence (experiment IDs,                    │
+     │ measured-vs-theoretical numbers, code refs path:line).                  │
+     │ 3. Experiment appendix: exact commands, env, log excerpts, results-JSON │
+     │ snippets, restart downtimes, E2 control baseline.                       │
+     │ 4. Findings register (each tagged with criterion + severity): no        │
+     │ persistence/resume; contract-fake drift risk (mitigated by service-side │
+     │ contract pin); one wired job type; no user-facing rate cap (internal    │
+     │ MAX_RATE=100); no Ollama-backend tests; no admin endpoint for runtime   │
+     │ limit changes (root cause of restart choreography).                     │
+     │ 5. Threats to validity: restart transients (mitigated by control run),  │
+     │ ±200ms mock jitter (use ≥60s windows, tolerate ±10%), TUI graded from   │
+     │ script capture.                                                         │
+     │                                                                         │
+     │ Verification                                                            │
+     │                                                                         │
+     │ The plan is self-verifying — the experiments are the verification.      │
+     │ Sanity gates: Phase 1 tests must be green and constants must match      │
+     │ predictions before Phase 2; E2/E3 methodology is valid only if measured │
+     │ restart downtime < the transport-retry envelope read from runner.py     │
+     │ (else lean on the control run and say so in threats-to-validity).       │
+     │                                                                         │
+     │ Risks                                                                   │
+     │                                                                         │
+     │ Port 8080 conflicts; restart downtime vs 3-retry budget (warm venvs,    │
+     │ measure explicitly); stray background services (PID-file kill + cleanup │
+     │ sweep); Rich TUI degradation without a TTY; mock jitter noise on short  │
+     │ runs. Total estimated effort ≈ 2–2.5 h wall time, mostly unattended     │
+     │ run time.                                                               │
+     ╰─────────────────────────────────────────────────────────────────────────╯
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/what-we-re-evaluating-composed-balloon.md · 
+     /plan to edit
+     Evaluation Plan: Benchmark-Orchestrator vs the Grading Criteria
+
+     Context
+
+     The repo is a finished FDE take-home (rate-limited inference service + AIMD
+     benchmark orchestrator). The task is to evaluate it against the five
+     weighted criteria from the brief — concurrency & backoff, system design,
+     observability, product thinking, pragmatism — and produce an
+     evidence-backed evaluation report. The repo stays read-only; all artifacts
+     (helper scripts, trimmed queues, logs, results, report) go to the session
+     scratchpad ($SCRATCH).
+
+     Key constraint discovered in exploration: the service's RPM/MAX_CONCURRENCY
+     are read from env once at startup — no admin endpoint. The "halve/double
+     RPM mid-run" scenarios must be done by restarting the native service 
+     process with new env (the README's own measured runs did exactly this).
+     Restart kills in-flight requests, and the orchestrator only gives transport
+     errors a 3-retry exponential-backoff budget — so downtime must be
+     measured, and a control run (restart with unchanged RPM) separates restart
+     transients from adaptation quality.
+
+     Phase 0 — Pre-flight (~5 min)
+
+     - lsof -i :8080 (kill/abort on conflict). Never use system Python (3.9);
+     always uv run --project <dir> ....
+     - Warm both venvs: uv run --project .../inference-service python --version,
+     same for orchestrator (fast restarts depend on warm venvs).
+     - Create in $SCRATCH:
+       - queue_1.jsonl / queue_3.jsonl — 1 and 3 lines of
+     {"benchmark_id":"run_00N","csv_path":"<ABSOLUTE path to 
+     data/benchmark.csv>"} (csv_path resolves relative to the queue file's dir,
+     so absolute paths are required).
+       - start_service.sh RPM CONC TAG — RPM=$1 MAX_CONCURRENCY=$2 BACKEND=mock 
+     nohup uv run --project .../inference-service inference-service > 
+     $SCRATCH/svc_$3.log 2>&1 &; write PID to $SCRATCH/svc.pid.
+       - restart_service.sh RPM CONC TAG — kill PID, restart, poll curl -sf 
+     localhost:8080/healthz every 0.2s; log epoch timestamps at kill and first
+     healthy → measured downtime.
+     - Standard run: uv run --project .../orchestrator orchestrator <queue> 
+     --out $SCRATCH/results_<exp> --no-tui, piped through a per-line
+     epoch-timestamp prefix into $SCRATCH/orch_<exp>.log (the 5s log lines are
+     the reconvergence instrument).
+
+     Phase 1 — Static review (~45 min)
+
+     1. Test suites: uv run --project ... pytest in both subprojects; record
+     counts/runtimes. Note the FakeClock limiter tests, OpenAPI contract-pin
+     test (service), 12 AIMD unit tests + contract-fake integration tests
+     (orchestrator).
+     2. README claim audit (the README now makes measured, falsifiable claims —
+     verify them, don't just take the tour):
+       - Run the documented native quick-start verbatim; docker compose config
+     to validate compose (don't require daemon; if available, also smoke the
+     reviewer TL;DR mock path).
+       - Test counts/runtime as claimed: 15 service tests, 26 orchestrator
+     tests, ~90s (one test waits out a real 60s RPM window).
+       - docs/sample-results/ exists and its JSON matches the numbers quoted in
+     the README (learned_rpm 299, 5.04 rps, 1060 total requests, etc.).
+       - The headline claim "swap limits while the orchestrator is mid-run; it
+     re-converges and loses nothing" (their measured run: RPM 120→60→240, 600
+     queries, 0 failed, 42 429s) — E2/E3 independently test the same claim at
+     different values; the README's own 0-failure result sets the bar for
+     "strong".
+       - Documented defaults match config.py.
+     3. Per-criterion reading (verify constants the experiments predict
+     against):
+       - orchestrator/src/orchestrator/controller.py — window start 2, +1 per 5
+     clean-if-binding, slow-start ×2, creep ×1.15/2s, learn ×0.98, MAX_RATE=100.
+       - orchestrator/src/orchestrator/runner.py — exact transport-error backoff
+     schedule (predict whether restart downtime fits inside it before running
+     E2).
+       - inference-service/src/inference_service/rate_limiter.py —
+     concurrency-before-RPM check; rejects don't consume window slots.
+       - orchestrator/src/orchestrator/jobs.py, cli.py, report.py, tui.py; all
+     12 ADRs (grade whether code matches stated decisions). README confirms
+     results JSON persists http_429_count, discovered_limits with
+     429s-by-reason, and an rpm_limit_observed honesty flag — verify in
+     report.py and use as the E5 data source.
+     4. Extensibility desk probe (no code committed): sketch adding a
+     prompt_jsonl job type; enumerate files touched. Strong = new handler class
+     + one REGISTRY line; weak = benchmark_csv assumptions baked into
+     runner/report/CLI (trace for accuracy/grouping coupling).
+
+     Phase 2 — Experiment matrix (mock backend, ~55–70 min dynamic)
+
+     Theoretical throughput = min(RPM/60, CONC/0.4s) at mock latency
+     400ms±200ms.
+
+     Exp: E1 baseline
+     Config: RPM=60 CONC=4
+     Queue: full 1000-q
+     Ceiling: 1.0 rps
+     What's judged: Convergence + efficiency: wall ≤ ~1100s (≥0.90 of ideal
+     1000s),
+     learned rate ≈ 57–60/min, rpm_limit_observed: true, 0 failures. Do not 
+     penalize discovered concurrency staying ≈2: at 1.0 rps × 0.4s, in-flight ≈
+     0.4 — the window is never binding, so not climbing to 4 is correct (the
+     README's rpm_limit_observed honesty flag shows the author understands this
+     —
+     credit under observability/product). Cross-check shape against committed
+     docs/sample-results/.
+     ────────────────────────────────────────
+     Exp: E7 observability + control restart
+     Config: RPM=60 CONC=4
+     Queue: queue_1
+     Ceiling: 1.0 rps
+     What's judged: TUI run captured via script -q (non-interactive caveat) +
+     --no-tui run; mid-run, can each mode answer: current throughput, ETA,
+     learned
+      limits, failure count, and why it's pausing? Fold in the control restart
+     (restart with unchanged RPM=60) to measure restart-transient-only failures
+     —
+     E2 is judged net of this.
+     ────────────────────────────────────────
+     Exp: E2 halve (headline)
+     Config: RPM=60→30 at t+150s
+     Queue: queue_3 (300 q)
+     Ceiling: 1.0→0.5 rps
+     What's judged: Reconvergence: first log where 30s-window rps ∈ [0.42, 0.58]
+     and
+     holds. ≤120s strong / ≤240s adequate / oscillation-or-collapse weak. Net
+     failures 0 strong (this is the README's own measured claim — "loses
+     nothing",
+      0 failed across two restarts) / ≤4 (one in-flight cohort) adequate.
+     Anticipate: restarted service has an empty window → brief accept-burst then
+
+     rpm-429s; orchestrator's trailing-60s learn is polluted by pre-restart
+     traffic for up to 60s, so first learned value may need a second 429 cycle.
+     ────────────────────────────────────────
+     Exp: E3 double
+     Config: RPM=30→60 at t+150s
+     Queue: queue_3
+     Ceiling: 0.5→1.0 rps
+     What's judged: Upward rediscovery via ×1.15 creep only (no error signal):
+     ~6
+     creep steps ≈ 12s pure; expect 1.0 rps within 30–90s (strong ≤90s, adequate
+
+     ≤240s, weak = stuck at stale cap — a real adaptivity bug if seen). Final
+     discovered_limits should read ~60.
+     ────────────────────────────────────────
+     Exp: E4a tight-conc
+     Config: RPM=600 CONC=2
+     Queue: queue_3
+     Ceiling: 5.0 rps
+     What's judged: Concurrency-429s dominate, window → 2, throughput 4.5–5 rps.
+
+     Validates +1-only-if-binding and drop-to-observed-in-flight.
+     ────────────────────────────────────────
+     Exp: E4b tight-rpm
+     Config: RPM=20 CONC=8
+     Queue: queue_1
+     Ceiling: 0.333 rps
+     What's judged: Learned rate ≈ 19.6/min, zero concurrency-429s. E4a+E4b
+     together
+     = each knob discovered from its own signal.
+     ────────────────────────────────────────
+     Exp: E5 politeness
+     Config: derived from E1–E4 results JSON + logs
+     Queue: —
+     Ceiling: —
+     What's judged: 429/accepted ratio (http_429_count vs total_http_requests
+     are
+     persisted) in steady state + worst 10s 429 burst from timestamped logs.
+     Strong < 5% and no burst > ~10/10s; weak = tight 429 loops. Reference
+     point:
+     README's sample run shows 60 429s / 1060 requests ≈ 5.7% at a tighter
+     config.
+      Credit the service too: rejects don't consume window slots.
+     ────────────────────────────────────────
+     Exp: E6 failure paths
+     Config: —
+     Queue: queue_1
+     Ceiling: —
+     What's judged: (a) service down at start → exit 2, clean message; (b) kill
+     service at t+30s, never restart → run completes with failures recorded, no
+     hang/traceback (hang = major pragmatism deduction); (c) SIGINT → exit 130 +
+
+     honest "partial results were not written"; file the no-resume gap.
+
+     Order: Phase 1 → E1 → E7(+control) → E2 → E3 → E4a → E4b → E6 → E5 analysis
+     → report. Kill service ($SCRATCH/svc.pid) after every experiment; final
+     ps-verified cleanup sweep.
+
+     Phase 3 — Scoring rubric (weights from the brief's order)
+
+     - Concurrency & backoff (30%) — strong: E1 ≥0.90 efficiency + learned rate
+     within 5%; E2 net reconvergence ≤120s, ≤4 net failures; E3 ≤90s;
+     independent knobs in E4; E5 <5%. Weak: oscillation, stale-cap lock, 429
+     storms, efficiency <0.75.
+     - System design (25%) — strong: desk probe = jobs.py-only change;
+     controller ignorant of HTTP, runner ignorant of grading; ADRs match code.
+     Weak: ceremonial registry, god-object runner.
+     - Observability (20%) — strong: both modes answer "what is it doing right
+     now" incl. pause reason; results JSON is a complete post-mortem (429
+     breakdown + discovered limits persisted). Weak: stall cause opaque during
+     E2 pause.
+     - Product thinking (15%) — strong: README verbatim-works, sane
+     defaults/exit codes, honest gap docs. Weak: undocumented steps, hostile
+     errors.
+     - Pragmatism (10%) — strong: end-to-end works both paths; budget visibly
+     spent on the hard part (controller + tests); gaps chosen and documented.
+     Weak: polish on corners while E1/E6 fail.
+
+     Score strong=3/adequate=2/weak=1 weighted, but lead the report with a
+     narrative verdict.
+
+     Phase 4 — Deliverable
+
+     $SCRATCH/evaluation_report.md (scratchpad, not the repo — it's the artifact
+     under evaluation; can be relocated/published after user review):
+     1. Executive summary + weighted score table.
+     2. Per-criterion verdict + evidence (experiment IDs,
+     measured-vs-theoretical numbers, code refs path:line).
+     3. Experiment appendix: exact commands, env, log excerpts, results-JSON
+     snippets, restart downtimes, E2 control baseline.
+     4. Findings register (each tagged with criterion + severity): no
+     persistence/resume (README documents it as a chosen cut + "build next" item
+     — grade as conscious tradeoff); contract-fake drift risk (mitigated by
+     service-side contract pin); one wired job type; no user-facing rate cap
+     (internal MAX_RATE=100); no Ollama-backend tests; no admin endpoint for
+     runtime limit changes (root cause of restart choreography). Also record
+     README-claim verification results (sample-results match, measured-run
+     reproducibility) — a claim that doesn't reproduce is a
+     product-thinking/honesty finding.
+     5. Threats to validity: restart transients (mitigated by control run),
+     ±200ms mock jitter (use ≥60s windows, tolerate ±10%), TUI graded from
+     script capture.
+
+     Verification
+
+     The plan is self-verifying — the experiments are the verification. Sanity
+     gates: Phase 1 tests must be green and constants must match predictions
+     before Phase 2; E2/E3 methodology is valid only if measured restart
+     downtime < the transport-retry envelope read from runner.py (else lean on
+     the control run and say so in threats-to-validity).
+
+     Risks
+
+     Port 8080 conflicts; restart downtime vs 3-retry budget (warm venvs,
+     measure explicitly); stray background services (PID-file kill + cleanup
+     sweep); Rich TUI degradation without a TTY; mock jitter noise on short
+     runs. Total estimated effort ≈ 2–2.5 h wall time, mostly unattended run
+     time.
+
+⏺ Plan approved — starting execution. Setting up tracking and running pre-flight
+  checks.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+  Made 3 scratchpad edits +46, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Pre-flight done — both venvs warm on Python 3.12.13, port 8080 free, helper
+  scripts in place. Starting Phase 1: launching both test suites (orchestrator's
+  takes ~90s) while I read the key code.
+  Read 7 files, listed 1 directory, ran 6 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run inference-service test suite" completed (exit code 0)
+
+⏺ The orchestrator suite is still running (expected — one test genuinely waits
+  out a 60s RPM window). I'll start E1 as soon as it completes to avoid CPU
+  contention with the timing-sensitive tests.
+
+✻ Worked for 17m 2s
+
+⏺ Background command "Run orchestrator test suite (~90s expected)" completed
+(exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Service healthy in 0.23s from warm start — restart downtime will sit
+  comfortably inside the 3.5–7s transport-retry envelope. Launching the E1 run.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Stop Task
+  ⎿  SCRATCH=/private/tmp/claude-501/-Users-ivanfedarau-Downloads-Benchmark
+     -Orchestrator/07dd8c87-b7da-4914-92fd-a82a37184753/scratchpad
+     "$SCRATCH/run_orch.sh" /Users… · stopped
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Monitor(E1 baseline run progress + completion)
+  ⎿  Monitor started · task b4j5o1qbk · timeout 2400s
+⏺ E1 is running detached with a monitor reporting progress every 2 minutes.
+  Expected ~17–19 minutes for the full 1000 queries at the 1.0 rps ceiling. I'll
+  report each experiment's findings as they land.
+
+✻ Baked for 1m 11s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ E1 on track at the 2-minute mark: 126/1000 done, 1.25 req/s (slightly above
+  the 1.0 ceiling — the documented sliding-window catch-up effect), 11 429s
+  absorbed, 0 failures. Continuing to monitor.
+
+✻ Churned for 8s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ Steady state confirmed at ~1.0 rps cumulative (246 done in ~247s). While E1
+  runs, I'll draft the report skeleton with the static-review evidence already
+  gathered.
+
+  Made 1 scratchpad edit +119 (ctrl+o to expand)
+
+⏺ Report skeleton drafted with all static-review evidence filled in. Waiting on
+  E1 to complete before the experiment sections.
+
+✻ Brewed for 35s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ E1 continues healthy: 366/1000 at ~6 min, cumulative ≈1.0 rps, 19 429s, 0
+  failures. Nothing to act on.
+
+✻ Crunched for 3s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ Halfway there (486/1000 at ~8 min), still 0 failures with 429s accruing at
+  only ~2/min — the polite re-probe cycle behaving as designed.
+
+✻ Worked for 3s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ 606/1000 at ~10 min — on pace for a ~1000s finish, right at the theoretical
+  ideal. Continuing to monitor.
+
+✻ Crunched for 2s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ 720/1000; the live 30s-window rps dipped to 0.44 — that's a Retry-After pause
+  after an rpm-429 re-probe, and cumulative pace is still ~0.99 rps. Expected
+  AIMD behavior, not a stall.
+
+✻ Sautéed for 3s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ 840/1000 at ~14 min, cumulative pace holding at ~0.99 rps. Should finish in ~3
+  minutes.
+
+✻ Churned for 3s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ 960/1000 — final stretch, still 0 failures.
+
+✻ Cooked for 3s
+
+⏺ Monitor event: "E1 baseline run progress + completion"
+
+⏺ Monitor "E1 baseline run progress + completion" stream ended
+
+⏺ E1 baseline: strong pass. 1000/1000 completed, 0 failures, wall time 996.5s vs
+  the 1000s theoretical ideal — efficiency ≈ 1.00 (slightly above, via
+  legitimate sliding-window catch-up bursts). Learned RPM = 60 (truth: 60,
+  exact), discovered concurrency ≈ 4, and just 46 429s across ~1046 requests
+  (4.4% — under the 5% politeness bar). Interesting bonus: the concurrency
+  window did climb to 4 — catch-up bursts after Retry-After pauses made the
+  window briefly binding, which triggered the growth probes.
+
+  Now E7: observability check (real TUI via a pty) plus the control restart that
+  E2 needs as a baseline.
+  Ran 5 shell commands (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Monitor(E2 RPM-halve run progress + completion)
+  ⎿  Monitor started · task b0iderx2h · timeout 900s
+
+⏺ While E2 runs (~7.5 min), filling in the completed experiment sections of the
+  report.
+
+  Made 1 scratchpad edit +36 -5 (ctrl+o to expand)
+
+⏺ Report updated with E1 and E7 evidence. Waiting on E2's monitor.
+
+✻ Baked for 4m 43s
+
+⏺ Monitor event: "E2 RPM-halve run progress + completion"
+
+⏺ E2 pre-restart phase looks normal (102/300 at ~82s, converged near ceiling).
+  Restart to RPM=30 fires at t+150s.
+
+✻ Brewed for 4s
+
+⏺ Monitor event: "E2 RPM-halve run progress + completion"
+
+⏺ Post-restart burst visible (empty server window let it catch up at 1.69 rps
+  live) — now it should hit the new 30-RPM wall and re-learn. 0 failures through
+  the restart so far.
+
+✻ Crunched for 5s
+
+⏺ Monitor event: "E2 RPM-halve run progress + completion"
+
+⏺ Cumulative post-restart pace: 31 queries in the last 61s ≈ 0.51 rps — right at
+  the new 0.5 ceiling, still 0 failures. Awaiting completion for the precise
+  reconvergence analysis.
+
+✻ Cooked for 7s
+
+⏺ Monitor event: "E2 RPM-halve run progress + completion"
+
+⏺ 278/300, holding ~0.5 rps cumulative post-restart, 0 failures. Nearly done.
+
+✻ Sautéed for 2s
+
+⏺ Monitor event: "E2 RPM-halve run progress + completion"
+
+⏺ Monitor "E2 RPM-halve run progress + completion" stream ended
+⏺ E2 headline result: 300/300, 0 net failures, learned RPM ≈ 30 (truth 30 — 
+  exact re-learn), only 13 429s. The "loses nothing" claim reproduces at
+  different values than the README's own run. Computing precise reconvergence
+  time from the timestamped logs, then launching E3.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Monitor(E3 RPM-double run progress + completion)
+  ⎿  Monitor started · task b1jf9he7v · timeout 1200s
+
+  Made 1 scratchpad edit +16 -2, read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ E2 section written. Waiting on E3 (RPM 30→60, restart at t+150s) to measure
+  upward rediscovery speed.
+
+✻ Churned for 1m 27s
+
+⏺ Monitor event: "E3 RPM-double run progress + completion"
+
+⏺ E3 pre-restart phase converged on the 30-RPM limit (63 done at ~126s ≈ 0.5
+  rps). The doubling restart fires at t+150s.
+
+✻ Churned for 3s
+
+⏺ Monitor event: "E3 RPM-double run progress + completion"
+
+⏺ ~97s after the doubling restart, live throughput already reads 0.98 rps — the
+  ×1.15 creep found the new headroom. Awaiting completion for the precise
+  rediscovery timing.
+
+✻ Churned for 4s
+
+⏺ Monitor event: "E3 RPM-double run progress + completion"
+
+⏺ 270/300, 0 failures. Nearly done.
+
+✻ Cogitated for 1s
+
+⏺ Monitor event: "E3 RPM-double run progress + completion"
+
+⏺ Monitor "E3 RPM-double run progress + completion" stream ended
+
+⏺ E3: 300/300, 0 failures, final learned RPM ≈ 60 — no stale-cap lock; the creep
+  rediscovered the doubled limit. Computing the rediscovery time and launching
+  E4a (RPM=600, CONC=2) in parallel.
+
+  Made 1 scratchpad edit +13 -2, ran 2 shell commands (ctrl+o to expand)
+⏺ E3 written up. Waiting for E4a to finish.
+
+✻ Cooked for 37s
+
+⏺ Background command "Wait for E4a completion and show summary" completed (exit
+code 0)
+
+  Made 1 scratchpad edit +20 -2, read 1 file, ran 3 shell commands (ctrl+o to expand)
+
+⏺ E4b is running (~5–6 min at the 0.333 rps ceiling). E6's failure-path tests
+  need the service down, so they follow E4b; nothing else to do in parallel
+  right now.
+
+✻ Cogitated for 1m 10s
+
+⏺ Background command "Wait for E4b completion and show summary" completed (exit
+code 0)
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+  Ran 8 shell commands (ctrl+o to expand)
+
+❯ continue with the remaining experiments                                       
+
+  Ran 3 shell commands (ctrl+o to expand)
+  Made 4 scratchpad edits +172 -32, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Evaluation complete. Full report:
+  /private/tmp/claude-501/-Users-ivanfedarau-Downloads-Benchmark-Orchestrator/07
+  dd8c87-b7da-4914-92fd-a82a37184753/scratchpad/evaluation_report.md (kept out
+  of the repo since the repo is the artifact under evaluation — say the word and
+  I'll copy it wherever you want).
+
+  Verdict: strong on all five criteria
+
+  Concurrency & backoff (30%) — strong. Baseline 1000-query run finished in
+  996.5s vs the 1000s theoretical ideal (efficiency 1.00), learned RPM = 60
+  exactly, 0 failures. The headline mid-run halve (60→30 via service restart at
+  t+150s): reconverged to the new 0.5 rps ceiling within one 60s window (~92s),
+  re-learned RPM = 30 exactly, 0 queries lost — and a control restart with
+  unchanged limits proved the restart itself costs nothing (0.28s downtime, 0
+  failures). The double (30→60) rediscovered headroom in ~62s purely via the
+  ×1.15 creep, no stale-cap lock. E4 proved each knob is discovered from its own
+  429 flavor alone (49 conc/0 rpm vs 8 rpm/0 conc). No melting anywhere: worst
+  burst was 5 429s in any 10s.
+
+  System design (25%) — strong. The registry is real (new job type = one class +
+  one dict entry, nothing else touched), boundaries hold (controller ignorant
+  of HTTP, runner of grading), all 12 ADRs match shipped code.
+
+  Observability (20%) — strong, one real wart. The TUI answers everything live
+  including why it's paused (ticking countdown). But --no-tui heartbeats are 
+  completion-driven (tui.py:85), so log mode goes silent for the length of a 
+  pause — I measured a 50.3s gap — exactly when a customer would ask "is it
+  hung?" First thing to patch.
+
+  Product thinking (15%) — strong. Every falsifiable README claim reproduced:
+  test counts/runtimes (15/0.9s, 26/89s), committed sample-results numbers, the
+  "loses nothing" claim, exit 2 with actionable copy when the service is down,
+  instant exit 130 + honest message on a real pty Ctrl-C. Nits: exit 0 even with
+  40 failed queries (no --fail-on-error), and "discovered: concurrency≈4" when
+  the true cap was 8 (it reports the window; the rpm side has an honesty flag,
+  the concurrency side lacks its twin).
+
+  Pragmatism (10%) — strong. Zero crashes across 8 experiment configurations
+  including permanent mid-run service death (completed with 60/40 recorded,
+  clean errors, no hang). Cut corners (no resume, one job type) are chosen,
+  documented, and listed as next steps.
+
+  The findings register has 10 items (F1 silent-pause logging and F2 no-resume
+  are the only moderates; the rest are minor/cosmetic, e.g. 0.80-of-ceiling in
+  the concurrency-bound regime from probe tax, and transport errors polluting
+  the rpm-learning window). Threats-to-validity are documented in the report —
+  the main one (restart transients vs adaptation) is neutralized by the control
+  run.
+
+✻ Cooked for 4m 30s

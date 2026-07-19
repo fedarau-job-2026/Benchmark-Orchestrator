@@ -1,6 +1,6 @@
 ╭─── Claude Code v2.1.215 ─────────────────────────────────────────────────────╮
 │                                                    │ Tips for getting        │
-│                  Welcome back if!                  │ started                 │
+│                  Welcome back aa!                  │ started                 │
 │                                                    │ Run /init to create a … │
 │                       ▐▛███▜▌                      │ ─────────────────────── │
 │                      ▝▜█████▛▘                     │ What's new              │
