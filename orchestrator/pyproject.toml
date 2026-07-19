@@ -1,0 +1,31 @@
+[project]
+name = "orchestrator"
+version = "0.1.0"
+description = "Benchmark orchestrator: discovers endpoint limits and drives job queues through them (H Company FDE take-home)"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28",
+    "rich>=13.9",
+]
+
+[project.scripts]
+orchestrator = "orchestrator.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "uvicorn>=0.32",
+    "fastapi>=0.115",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orchestrator"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

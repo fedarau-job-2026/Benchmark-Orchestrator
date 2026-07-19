@@ -1,0 +1,71 @@
+# Convenience wiring only — each service is an independent deployment (see CLAUDE.md).
+#
+# Real-model path (default):
+#   docker compose up -d inference          # brings up ollama + pulls the model
+#   docker compose run --rm orchestrator
+#
+# Mock path (no model needed):
+#   docker compose up -d inference-mock
+#   docker compose run --rm orchestrator
+#
+# Reviewers change limits via env: RPM=30 MAX_CONCURRENCY=2 docker compose up -d inference
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama serve & sleep 3 && ollama pull ${MODEL:-qwen2.5:0.5b} && touch /tmp/model-ready && wait"]
+    healthcheck:
+      # Healthy only once the model has been pulled
+      test: ["CMD", "test", "-f", "/tmp/model-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 10s
+
+  inference:
+    build: ./inference-service
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      RPM: ${RPM:-60}
+      MAX_CONCURRENCY: ${MAX_CONCURRENCY:-4}
+      BACKEND: ollama
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      MODEL: ${MODEL:-qwen2.5:0.5b}
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # Same image, mock backend, no Ollama dependency. Answers on the same
+  # network alias so the orchestrator config is identical.
+  inference-mock:
+    profiles: ["mock"]
+    build: ./inference-service
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      RPM: ${RPM:-60}
+      MAX_CONCURRENCY: ${MAX_CONCURRENCY:-4}
+      BACKEND: mock
+      MOCK_LATENCY_MS: ${MOCK_LATENCY_MS:-400}
+    networks:
+      default:
+        aliases: [inference]
+
+  orchestrator:
+    profiles: ["orchestrator"]  # started explicitly via `docker compose run`
+    build: ./orchestrator
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./data:/data:ro
+      - ./results:/results
+    environment:
+      INFERENCE_URL: http://inference:8080
+    command: ["/data/queue.jsonl", "--out", "/results"]
+
+volumes:
+  ollama-models:

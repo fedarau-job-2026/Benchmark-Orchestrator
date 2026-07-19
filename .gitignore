@@ -1,0 +1,21 @@
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Run artifacts
+results/
+*.log
+.pytest_cache/
