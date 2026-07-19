@@ -54,14 +54,22 @@ async def run(args) -> None:
         sys.exit(1)
 
     client = InferenceClient(args.url)
-    if not await client.healthy():
-        print(
-            f"error: inference service at {args.url} is not answering /healthz\n"
-            f"       start it first (see README) or pass --url",
-            file=sys.stderr,
-        )
-        await client.close()
-        sys.exit(2)
+    # Tolerate a service that is still booting (e.g. compose starting both sides).
+    deadline = time.monotonic() + 30.0
+    waited = False
+    while not await client.healthy():
+        if time.monotonic() >= deadline:
+            print(
+                f"error: inference service at {args.url} did not answer /healthz within 30s\n"
+                f"       start it first (see README) or pass --url",
+                file=sys.stderr,
+            )
+            await client.close()
+            sys.exit(2)
+        if not waited:
+            print(f"waiting for inference service at {args.url} ...", file=sys.stderr)
+            waited = True
+        await asyncio.sleep(1.0)
 
     controller = AdaptiveController()
     events = RunnerEvents()

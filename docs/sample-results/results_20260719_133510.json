@@ -1,0 +1,106 @@
+{
+  "run_id": "20260719_133510",
+  "generated_at": "2026-07-19T13:38:29.508623+00:00",
+  "queue_file": "/data/queue.jsonl",
+  "inference_url": "http://inference:8080",
+  "total_wall_time_s": 198.541,
+  "per_benchmark": [
+    {
+      "benchmark_id": "run_001",
+      "wall_time_s": 15.834,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_002",
+      "wall_time_s": 8.006,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_003",
+      "wall_time_s": 59.765,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_004",
+      "wall_time_s": 58.697,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_005",
+      "wall_time_s": 7.378,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_006",
+      "wall_time_s": 46.924,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_007",
+      "wall_time_s": 48.409,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_008",
+      "wall_time_s": 7.427,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_009",
+      "wall_time_s": 48.071,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    },
+    {
+      "benchmark_id": "run_010",
+      "wall_time_s": 47.853,
+      "queries": 100,
+      "completed": 100,
+      "failed": 0,
+      "accuracy": 0.07
+    }
+  ],
+  "request_latency_p50_s": 0.305,
+  "request_latency_p95_s": 0.487,
+  "throughput_rps": 5.037,
+  "total_http_requests": 1060,
+  "failure_count": 0,
+  "overall_accuracy": 0.07,
+  "completed_queries": 1000,
+  "http_429_count": 60,
+  "discovered_limits": {
+    "concurrency_window": 9.0,
+    "rpm_limit_observed": true,
+    "learned_rpm": 299,
+    "final_pacer_rps": 11.296,
+    "429s_rpm": 16,
+    "429s_concurrency": 44,
+    "429s_unknown": 0
+  }
+}
